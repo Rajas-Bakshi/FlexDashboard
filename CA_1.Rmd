@@ -1,0 +1,460 @@
+---
+title: "Airbnb"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+runtime: shiny
+---
+Page 1
+=========================================================================
+
+
+```{r global, include=FALSE}
+# load data in 'global' chunk so it can be shared by all users of the dashboard
+library(datasets)
+library(shiny)
+library(dplyr)
+library(tidyverse)
+library(bindr)
+library(ggplot2)
+library(viridis)
+library(ggmap)
+library(rgdal)
+library(Hmisc)
+library(Metrics)
+library(corrr)
+library(ade4)
+library(data.table)
+library(scales)
+library(viridis)
+library(flexdashboard)
+data(iris)
+df  <- read.csv("listings.csv")
+register_google(key = "AIzaSyD8zedZOWspc5a_a1T4iB1zCudOx8I3V-k")
+```
+
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+radioButtons('x', 'X Variable', c("year","month","day"))
+
+```
+
+Column
+-----------------------------------------------------------------------
+
+
+```{r}
+df  <- read.csv("listings.csv")
+df <- df %>%
+  select(c('host_since','price','room_type','bedrooms','property_type','host_verifications', 'latitude', 'longitude',"beds","accommodates","bathrooms"))
+df <- df %>%
+  filter(!is.na(host_since) & !is.na(price))%>%
+   mutate(bedrooms  = ifelse(is.na(bedrooms), as.integer(mean(df$bedrooms, na.rm = TRUE)), bedrooms))%>%
+mutate(price = as.double(gsub("\\$", "",price)))
+
+df$host_since <-as.POSIXct(strptime(df$host_since, "%m/%d/%Y", "GMT"))
+
+df <- df %>%
+  mutate(month = format(host_since, "%m"), year = format(host_since, "%Y"), day = format(host_since, "%d"))
+df <- df %>%
+  filter(!is.na(host_since) & !is.na(price))
+
+montly_count <- df%>%
+  group_by(month)%>%
+  summarise(Count = n())%>%
+  ggplot(aes(x=month,y=Count)) + geom_bar(stat = "identity")
+
+```
+
+### Number of registractions and Mean rent of Properties. 
+```{r}
+
+aggregated <- reactive({
+  df%>%
+  group_by_(input$x)%>%
+  summarise(Count = n(), Mean_Price = mean(price)*10)%>%
+  melt(c('Count','Mean_Price'),id.vars = 1)%>%
+  ggplot(aes_string(x=input$x,y = "value")) + 
+    geom_bar(aes(fill = variable),stat = "identity",position = "dodge")+scale_y_continuous(
+    "Count", 
+    sec.axis = sec_axis(~ . /10, name = "Mean Price")
+  )
+  
+})
+renderPlot({
+  aggregated()
+})
+```
+
+
+Page 2
+========================================================
+
+row {.tabset}
+-----------------------------------------------------
+
+
+### Average rent of property by room type.
+
+```{r}
+
+df%>%
+  group_by(room_type)%>%
+  summarise(mean_of_price = mean(price, na.rm = TRUE))%>%
+  ggplot(aes(x= "", fill= room_type, y= mean_of_price)) + geom_bar(stat='identity') + coord_polar("y", start=0)
+
+```
+
+### Number of property by room type.
+
+```{r}
+
+df%>%
+  group_by(room_type)%>%
+  summarise(count = n())%>%
+  ggplot(aes(y = count, x = room_type, fill = room_type)) + geom_bar(stat='identity') + coord_polar("y", start=0)
+
+
+```
+
+Row
+------------------------------------------------------
+
+### Number of bedrooms in the property V/S Mean Price of property and number of properties 
+
+```{r}
+
+df %>%
+  group_by(bedrooms)%>%
+  summarise(Count = n(), Mean_Price = mean(price)*10)%>%
+  melt(c('Count','Mean_Price'),id.vars = 1)%>%
+  ggplot(aes(x = bedrooms,y = value)) + geom_bar(aes(fill = variable),stat = "identity",position = "dodge")+scale_y_continuous( "Count",  sec.axis = sec_axis(~ . /10, name = "Mean Price"))
+
+
+```
+
+### Relation between host verification and the Rent for the property
+
+```{r}
+df %>%
+  mutate(host_verifications = str_count(host_verifications, "'")/2)%>%
+  group_by(host_verifications)%>%
+  summarise(mean = mean(price))%>%
+  ggplot(aes(host_verifications, mean)) +geom_line(size = 2, color = "#A45D4E") + ylab("mean price $")
+```
+
+Row {data-height=30}
+-----------------------------------------------------------------------
+Rent of 5 most expensive properties.
+
+Row 
+-----------------------------------------------------------------------
+
+### Private room in lighthouse
+
+```{r}
+lighthouse <- df%>%
+  filter(property_type == "Private room in lighthouse")%>%
+  summarise(mean(price))
+gauge(lighthouse[1,1], min = 0, max = 1000, gaugeSectors(
+  success = c(0, 500), warning = c(500, 699), danger = c(700, 1000)
+))
+
+```
+
+### Entire resort
+
+```{r}
+lighthouse <- df%>%
+  filter(property_type == "Entire resort")%>%
+  summarise(round(mean(price, na.rm = TRUE),2))
+
+gauge(lighthouse[1,1], min = 0, max = 1000, gaugeSectors(
+  success = c(0, 500), warning = c(500, 699), danger = c(700, 1000)
+))
+
+```
+
+### Private room in tent
+
+```{r}
+lighthouse <- df%>%
+  filter(property_type == "Private room in tent")%>%
+  summarise(mean(price))
+gauge(lighthouse[1,1], min = 0, max = 1000, gaugeSectors(
+  success = c(0, 500), warning = c(500, 699), danger = c(700, 1000)
+))
+
+```
+
+### Private room in resort
+
+```{r}
+lighthouse <- df%>%
+  filter(property_type == "Private room in resort")%>%
+  summarise(mean(price))
+gauge(lighthouse[1,1], min = 0, max = 1000, gaugeSectors(
+  success = c(0, 500), warning = c(500, 699), danger = c(700, 1000)
+))
+
+```
+
+### Entire bed and breakfast
+
+```{r}
+lighthouse <- df%>%
+  filter(property_type == "Entire bed and breakfast")%>%
+  summarise(mean(price))
+gauge(lighthouse[1,1], min = 0, max = 1000, gaugeSectors(
+  success = c(0, 500), warning = c(500, 699), danger = c(700, 1000)
+))
+
+```
+
+Row {data-height=30}
+-----------------------------------------------------------------------
+Rent of 5 least expensive properties.
+
+Row 
+-----------------------------------------------------------------------
+
+### Private room in in-law
+
+```{r}
+lighthouse <- df%>%
+  filter(property_type == "Private room in in-law")%>%
+  summarise(mean(price))
+gauge(lighthouse[1,1], min = 0, max = 1000, gaugeSectors(
+  success = c(0, 500), warning = c(500, 699), danger = c(700, 1000)
+))
+
+```
+
+### Private room in dome house
+
+```{r}
+lighthouse <- df%>%
+  filter(property_type == "Private room in dome house")%>%
+  summarise(mean(price))
+gauge(lighthouse[1,1], min = 0, max = 1000, gaugeSectors(
+  success = c(0, 500), warning = c(500, 699), danger = c(700, 1000)
+))
+
+```
+
+### Private room in dorm
+
+```{r}
+lighthouse <- df%>%
+  filter(property_type == "Private room in dorm")%>%
+  summarise(mean(price))
+gauge(lighthouse[1,1], min = 0, max = 1000, gaugeSectors(
+  success = c(0, 500), warning = c(500, 699), danger = c(700, 1000)
+))
+
+```
+
+### Private room in train
+
+```{r}
+lighthouse <- df%>%
+  filter(property_type == "Private room in train")%>%
+  summarise(mean(price))
+gauge(lighthouse[1,1], min = 0, max = 1000, gaugeSectors(
+  success = c(0, 500), warning = c(500, 699), danger = c(700, 1000)
+))
+
+```
+
+### Shared room in bungalow
+
+```{r}
+lighthouse <- df%>%
+  filter(property_type == "Shared room in bungalow")%>%
+  summarise(mean(price))
+gauge(lighthouse[1,1], min = 0, max = 1000, gaugeSectors(
+  success = c(0, 500), warning = c(500, 699), danger = c(700, 1000)
+))
+
+```
+
+
+Page 3
+=========================================================================
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+selectInput('yea', 'Year',c("2012","2016","2013","2019","2014","2018","2015","2017","2020"))
+radioButtons('room', 'Room Type',unique(df$room_type) )
+```
+
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+```{r}
+
+library(shiny)
+LA_map <- get_map(location = c(-73.95131,40.72965),
+    color = "color",
+    source = "google",
+    maptype = "satellite",
+    zoom = 11)
+theme_set(theme_bw(16))
+
+aggregated_map <-reactive({
+
+df_2008 <- df%>%
+  filter(year == input$yea)%>%
+  filter(room_type == input$room)
+
+ggmap(LA_map,
+    extent = "device",
+    xlab = "Longitude",
+    ylab = "Latitude") +
+    
+    # Add core lat/long coordinates as points, colored by fraction organic matter
+    geom_point(data = df_2008, aes(x = longitude, y = latitude ,alpha = 0.0001, color = price, size = price)) +scale_color_gradientn(" ",colors = c("#EFEC35", "#E82323")) 
+    # Provide ggplot2 with color gradient
+})
+
+renderPlot({
+  aggregated_map()
+})
+```
+
+Row {data-height=300}
+-----------------------------------------------------------------------
+
+### Number of properties registered in selected year
+
+```{r}
+aggregated_count <-reactive({
+df%>%
+  filter(year == input$yea)%>%
+  group_by(room_type)%>%
+  summarise(count = n())%>%
+  ggplot(aes(count,room_type)) + geom_bar(stat = "identity")
+
+})
+renderPlot({
+  aggregated_count()
+})
+```
+
+### Total Number of properties registered in selected year 
+
+```{r}
+aggregated_count_all <-reactive({
+df_total <- df%>%
+  filter(year == input$yea)%>%
+  summarise(count = n())
+return(df_total[1,1])
+
+})
+
+
+renderGauge({
+  gauge(aggregated_count_all(), min = 0, max = 6000,gaugeSectors(
+  success = c(0, 2000), warning = c(2001, 4000), danger = c(4000, 6000)))
+})
+
+
+```
+
+
+Page 4
+=========================================================================
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+checkboxInput('ploty', 'Plot Actual Rent', value = FALSE, width = NULL)
+checkboxInput('ploty_', 'Plot Predicted Rent', value = FALSE, width = NULL)
+
+```
+
+Column
+-----------------------------------------------------------------------
+
+### Predictions 
+```{r}
+OHE_cols <- c("property_type", "room_type")
+df_1 <- df
+for (c in OHE_cols){
+  df_all_dummy <- acm.disjonctif(df_1[c])
+  df_1 <- cbind(df_1, df_all_dummy)
+
+}
+
+df_1 <- df_1 %>%
+  select(-c("property_type", "room_type", "bathrooms", "host_since", "month", "year", "day","host_verifications"))
+
+
+res.cor <- correlate(df_1)
+col_names <- res.cor%>%
+  select(c("term","price"))%>%
+  mutate(price =abs(price))%>%
+  filter(price > 0.1)%>%
+  select(term)
+
+df_1 <- df_1%>%
+  select(c(col_names$term, price))
+
+colnames(df_1) <- c("bed","longitude","beds","accommodates","property_type_Entire_apartment","property_type_Entire_condominium","property_type_Entire_house","property_type_Entire_loft","property_type_Entire_townhouse",
+                  "property_type_Private_room_in_apartment","property_type_Private_room_in_house",
+                  "property_type_Private_room_in_townhouse",
+                  "room_type_Entire_home_apt","room_type_Private_room","price")
+
+library(randomForest)
+df_1 <- na.omit(df_1)
+smp_size <- floor(0.75 * nrow(df_1))
+
+set.seed(1243)
+train_ind <- sample(seq_len(nrow(df_1)), size = smp_size)
+train <- df_1[train_ind,]
+test <- df_1[-train_ind, ]
+rf<-  randomForest(price~., train, ntrees = 200)
+predicted <- predict(rf, test)
+
+clusters <- reactive({
+  print("react")
+  randomForest(price~., train, ntrees = input$ntrees)
+})
+
+random_forest_1001 <-reactive({
+  print("pppp")
+  #rf <- randomForest(price~., train, ntrees = input$ntrees)
+  #predicted <- predict(rf,test)
+  #ggplot()+geom_line(aes(c(1:10),head(predicted,10)), colour ="green", size =1) +labs(subtitle = "Green -> Y^ \n Red -> Y") + geom_line(aes(c(1:10), head(test$price, 10)), color = "red", size =1)+  xlab("Property") +ylab("Price")  +labs(color = "Y")
+    
+
+})
+
+renderPlot({
+graph <- ggplot()+labs(subtitle = "Green -> Y^ \n Red -> Y")+  xlab("Property") +ylab("Price")
+
+if (input$ploty == 1)({print("l2")
+graph <- graph+geom_line(aes(c(1:100),head(predicted,100)), colour ="green", size =1)
+})
+
+
+if (input$ploty_ == 1)({print("l2")
+graph <- graph+geom_line(aes(c(1:100), head(test$price, 100)), color = "red", size =1)
+})
+print('end')
+graph
+  })
+
+
+
+
+```
+
