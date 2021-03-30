@@ -31,7 +31,7 @@ library(viridis)
 library(flexdashboard)
 data(iris)
 df  <- read.csv("listings.csv")
-register_google(key = "AIzaSyD8zedZOWspc5a_a1T4iB1zCudOx8I3V-k")
+register_google(key = "_________")
 ```
 
 
